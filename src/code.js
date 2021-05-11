@@ -33,6 +33,7 @@ const loadImage = function (file, i) {
 function render() {
     var canvas = document.getElementById("myCanvas");
     var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     for (let i = 0; i < imageCount; i++) {
         if (images[i]) {
             ctx.drawImage(images[i], 0, 0, images[i].width, images[i].height,
@@ -108,8 +109,8 @@ function down_handler(event) {
     isPointerDown = true;
     for (let i = imageCount - 1; i >= 0; i--) {
         if (event.x >= imageMetadata[i].tx && event.y >= imageMetadata[i].ty &&
-            event.x <= images[i].width + imageMetadata[i].tx && 
-            event.y <= images[i].height + imageMetadata[i].ty) {
+            event.x <= images[i].width * imageMetadata[i].scale + imageMetadata[i].tx && 
+            event.y <= images[i].height * imageMetadata[i].scale + imageMetadata[i].ty) {
             currentImage = i;
             break;
         }
