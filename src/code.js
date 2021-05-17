@@ -2,6 +2,43 @@ const images = [];
 let imageCount = 0;
 let imageMetadata = [];
 let currentImage = 0;
+let nextImage = -1;
+
+// Global vars to cache event state for pinch scale
+var evCache = new Array();
+var prevDiff = -1;
+
+function remove_event(ev) {
+    // Remove this event from the target's cache
+    for (var i = 0; i < evCache.length; i++) {
+        if (evCache[i].pointerId == ev.pointerId) {
+            evCache.splice(i, 1);
+            break;
+        }
+    }
+}
+
+// Log events flag
+var logEvents = false;
+
+// Logging/debugging functions
+function enableLog(ev) {
+    logEvents = logEvents ? false : true;
+}
+
+function log(prefix, ev) {
+    if (!logEvents) return;
+    var o = document.getElementsByTagName('output')[0];
+    var s = prefix + ": pointerID = " + ev.pointerId +
+        " ; pointerType = " + ev.pointerType +
+        " ; isPrimary = " + ev.isPrimary;
+    o.innerHTML += s + "";
+}
+
+function clearLog(event) {
+    var o = document.getElementsByTagName('output')[0];
+    o.innerHTML = "";
+}
 
 const createMetaData = function createMetaData() {
     return {
@@ -36,9 +73,17 @@ function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     for (let i = 0; i < imageCount; i++) {
         if (images[i]) {
+            const w = images[i].width * imageMetadata[i].scale;
+            const h = images[i].height * imageMetadata[i].scale;
             ctx.drawImage(images[i], 0, 0, images[i].width, images[i].height,
-                imageMetadata[i].tx, imageMetadata[i].ty,
-                images[i].width * imageMetadata[i].scale, images[i].height * imageMetadata[i].scale);
+                imageMetadata[i].tx, imageMetadata[i].ty, w, h);
+            if (i === currentImage) {
+                ctx.strokeStyle = 'red';
+                ctx.strokeRect(imageMetadata[i].tx, imageMetadata[i].ty, w, h);
+            } else if (i === nextImage) {
+                ctx.strokeStyle = 'yellow'
+                ctx.strokeRect(imageMetadata[i].tx, imageMetadata[i].ty, w, h);
+            }
         }
     }
 }
@@ -105,44 +150,123 @@ let isPointerDown = false;
 let startX = 0;
 let startY = 0;
 
+function pick(event) {
+    const x = event.offsetX;
+    const y = event.offsetY;
+    for (let i = imageCount - 1; i >= 0; i--) {
+        const w = images[i].width * imageMetadata[i].scale;
+        const h = images[i].height * imageMetadata[i].scale;
+
+        if (x >= imageMetadata[i].tx && y >= imageMetadata[i].ty &&
+            x <= w + imageMetadata[i].tx &&
+            y <= h + imageMetadata[i].ty) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
 function down_handler(event) {
     isPointerDown = true;
-    for (let i = imageCount - 1; i >= 0; i--) {
-        if (event.x >= imageMetadata[i].tx && event.y >= imageMetadata[i].ty &&
-            event.x <= images[i].width * imageMetadata[i].scale + imageMetadata[i].tx && 
-            event.y <= images[i].height * imageMetadata[i].scale + imageMetadata[i].ty) {
-            currentImage = i;
-            break;
-        }
+    const i = pick(event);
+    if (currentImage !== i) {
+        currentImage = i;
+        nextImage = -1;
+        render();
     }
     startX = event.x - imageMetadata[currentImage].tx;
     startY = event.y - imageMetadata[currentImage].ty;
+    // The pointerdown event signals the start of a touch interaction.
+    // This event is cached to support 2-finger gestures
+    evCache.push(event);
+    log("pointerDown", event);
 }
 
-function move_handler(event) {
+function move_handler(ev) {
+    log("pointerMove", ev);
+    // ev.target.style.border = "dashed";
+
     if (isPointerDown) {
-        imageMetadata[currentImage].tx = event.x - startX;
-        imageMetadata[currentImage].ty = event.y - startY;
+        // Find this event in the cache and update its record with this event
+        for (var i = 0; i < evCache.length; i++) {
+            if (ev.pointerId == evCache[i].pointerId) {
+                evCache[i] = ev;
+                break;
+            }
+        }
+
+        // If two pointers are down, check for pinch gestures
+        if (evCache.length == 2) {
+            // Calculate the distance between the two pointers
+            var curDiff = Math.abs(evCache[0].clientX - evCache[1].clientX);
+
+            if (prevDiff > 0) {
+                const ds = (curDiff - prevDiff) * 1.01;
+                if (curDiff > prevDiff) {
+                    // The distance between the two pointers has increased
+                    log("Pinch moving OUT -> Zoom in", ev);
+                    scale += ds;
+                    // ev.target.style.background = "pink";
+                }
+                if (curDiff < prevDiff) {
+                    // The distance between the two pointers has decreased
+                    log("Pinch moving IN -> Zoom out", ev);
+                    // ev.target.style.background = "lightblue";
+                    scale -= ds;
+                }
+                render();
+            }
+
+            // Cache the distance for the next move event
+            prevDiff = curDiff;
+        } else {
+            imageMetadata[currentImage].tx = ev.x - startX;
+            imageMetadata[currentImage].ty = ev.y - startY;
+        }
         render();
+    } else {
+        const i = pick(ev);
+        if (i !== nextImage) {
+            nextImage = i;
+            render();
+        }
     }
 }
-function up_handler(event) {
+function up_handler(ev) {
     isPointerDown = false;
+    log(ev.type, ev);
+    // Remove this pointer from the cache and reset the target's
+    // background and border
+    remove_event(ev);
+    // ev.target.style.background = "white";
+    // ev.target.style.border = "1px solid black";
+
+    // If the number of pointers down is less than two then reset diff tracker
+    if (evCache.length < 2) {
+        prevDiff = -1;
+    }
 }
+
 function cancel_handler(event) {
     isPointerDown = false;
 }
-function out_handler(event) { }
-function leave_handler(event) { }
+
+function clearSelection() {
+    if (nextImage > -1) {
+        nextImage = -1;
+        render();
+    }
+    evCache = [];
+}
+function out_handler(event) { clearSelection(); }
+function leave_handler(event) { clearSelection(); }
+
 function gotcapture_handler(event) { }
 function lostcapture_handler(event) { }
 
 let scale = 1;
-function zoom(event) {
-    event.preventDefault();
-
-    scale += event.deltaY * -0.01;
-
+function scaleCurrentImage() {
     // Restrict scale
     scale = Math.min(Math.max(.125, scale), 4);
 
@@ -151,23 +275,94 @@ function zoom(event) {
     render();
 }
 
+function zoom(event) {
+    event.preventDefault();
+
+    scale += event.deltaY * -0.01;
+    scaleCurrentImage();
+}
+
+function arraySwap(arr, old_index, new_index) {
+    const swap = arr[old_index];
+    arr[old_index] = arr[new_index];
+    arr[new_index] = swap;
+    return arr; // for testing
+};
+
+function adjustZ(event, offset) {
+    if (currentImage >= 0) {
+        const new_index = Math.max(0, Math.min(imageCount - 1, currentImage + offset));
+        if (new_index !== currentImage) {
+            arraySwap(images, currentImage, new_index);
+            arraySwap(imageMetadata, currentImage, new_index);
+            currentImage = new_index;
+            nextImage = -1;
+            render();
+        }
+    }
+}
+
+function fix_dpi(canvas) {
+    //get DPI
+    let dpi = window.devicePixelRatio;
+
+    //get CSS height
+    //the + prefix casts it to an integer
+    //the slice method gets rid of "px"let style_height = +getComputedStyle(canvas).getPropertyValue("height").slice(0, -2);//get CSS width
+    let style_width = +getComputedStyle(canvas).getPropertyValue("width").slice(0, -2);//scale the canvascanvas.setAttribute('height', style_height * dpi);
+    canvas.setAttribute('width', style_width * dpi);
+    render();
+}
+
+function onResize(element, callback) {
+    var elementHeight = element.height,
+        elementWidth = element.width;
+    setInterval(function () {
+        if (element.height !== elementHeight || element.width !== elementWidth) {
+            elementHeight = element.height;
+            elementWidth = element.width;
+            callback();
+        }
+    }, 300);
+}
+
 function init(event) {
     console.log('DOM fully loaded and parsed');
     document.getElementById("uploadInput").addEventListener("change", updateFiles, false);
 
-    var el = document.getElementById("myCanvas");
+    var canvas = document.getElementById("myCanvas");
+    var canvasHost =  document.getElementById("canvasHost");
+
     // Register pointer event handlers
-    el.onpointerover = over_handler;
-    el.onpointerenter = enter_handler;
-    el.onpointerdown = down_handler;
-    el.onpointermove = move_handler;
-    el.onpointerup = up_handler;
-    el.onpointercancel = cancel_handler;
-    el.onpointerout = out_handler;
-    el.onpointerleave = leave_handler;
-    el.gotpointercapture = gotcapture_handler;
-    el.lostpointercapture = lostcapture_handler;
-    el.onwheel = zoom;
+    canvas.onpointerover = over_handler;
+    canvas.onpointerenter = enter_handler;
+    canvas.onpointerdown = down_handler;
+    canvas.onpointermove = move_handler;
+    canvas.onpointerup = up_handler;
+    canvas.onpointercancel = cancel_handler;
+    canvas.onpointerout = out_handler;
+    canvas.onpointerleave = leave_handler;
+    canvas.gotpointercapture = gotcapture_handler;
+    canvas.lostpointercapture = lostcapture_handler;
+    canvas.onwheel = zoom;
+
+    document.getElementById("fileNum").innerHTML = "";
+    document.getElementById("fileSize").innerHTML = "";
+
+    var _savedWidth = canvas.clientWidth;
+    var _savedHeight = canvas.clientHeight;
+    function isResized() {
+        canvas.width = canvasHost.clientWidth;
+        canvas.height = canvasHost.clientHeight;
+        if (_savedWidth != canvasHost.clientWidth || 
+            _savedHeight != canvasHost.clientHeight) {
+            _savedWidth = canvasHost.clientWidth;
+            _savedHeight = canvasHost.clientHeight;
+            onResize(canvas, () => fix_dpi(canvas));
+        }
+    }
+    window.addEventListener("resize", isResized);
+    isResized();
 }
 
 window.addEventListener('DOMContentLoaded', init);
