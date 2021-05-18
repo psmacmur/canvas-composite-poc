@@ -6,42 +6,97 @@
     <title>Canvas composite test</title>
     <script src="src/code.js"></script>
     <style>
+        html,
+        body {
+            overflow-x: hidden;
+            height: 100%;
+        }
+
         body p {
             font-size: medium;
         }
+
         input {
             font-size: large;
             margin: 4px;
             padding: 5px;
         }
+
         button {
             margin: 4px;
             padding: 5px;
         }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            grid-template-rows: auto 1fr auto;
+            gap: 0px 0px;
+            grid-template-areas:
+                "head"
+                "canvas"
+                "foot";
+            height: 98%;
+            width: 98%;
+        }
+
         #canvasHost {
+            grid-row: canvas;
+        }
+
+        #fader {
+            grid-area: centre;
+            padding-bottom: 5px;
+        }
+        #head {
+            grid-area: head;
+        }
+        #foot {
+            grid-area: foot;
+            display: grid;
+            grid-template-rows: 1fr;
+            grid-template-columns: auto 1fr auto;
+            gap: 0px 0px;
+            grid-template-areas:
+                "left centre right";
             width: 100%;
-            height: 80%;
+        }
+        #scaleLabel {
+            grid-area: left;
+            padding-top: 10px;
+        }
+        #volume {
+            grid-area: right;
+            padding-top: 10px;
         }
     </style>
 </head>
 
 <body>
-    <p>
-    Upload 1 or more images, background first. Images uploaded at the same time will be sorted back-to-front in
-    alphabetical order.</p>
-    <p>
-    Click & drag to position images; mouse wheel to scale.</p>
-    <div>
-        <input id="uploadInput" type="file" name="myFiles" multiple>
-        <button id="back" onclick="adjustZ(event, -1);">Send backward</button>
-        <button id="forward" onclick="adjustZ(event, 1);">Bring forward</button><br>
-        Selected files: <span id="fileNum">0</span>;
-        Total size: <span id="fileSize">0</span><br>
+    <div class="grid-container">
+        <div id="head">
+            <p>
+                Upload 1 or more images.<br>
+                Click & drag to position images; mouse wheel to scale.
+            </p>
+            <div>
+                <input id="uploadInput" type="file" name="myFiles" multiple>
+                <button id="back" onclick="adjustZ(event, -1);">Send backward</button>
+                <button id="forward" onclick="adjustZ(event, 1);">Bring forward</button><br>
+                Selected files: <span id="fileNum">0</span>;
+                Total size: <span id="fileSize">0</span><br>
+            </div>
+        </div>
+        <div id="canvasHost">
+            <canvas width="1024" height="768" id="myCanvas">
+        </div>
+        <div id="foot">
+            <label id="scaleLabel" for="fader">Scale</label>
+            <input type="range" id="fader" min="1" max="100" value="50" step="1" aria-valuemin="1" aria-valuemax="100"
+                aria-valuenow="50" oninput="onSlider(value)">
+            <output for="fader" id="volume">50</output>
+        </div>
     </div>
-
-    <div id="canvasHost">
-        <canvas width="1024" height="768" id="myCanvas">
-    </div>
-    <output></output>
 </body>
+
 </html>

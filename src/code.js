@@ -1,8 +1,12 @@
+// Log events flag
+var logEvents = false;
+
 const images = [];
 let imageCount = 0;
 let imageMetadata = [];
-let currentImage = 0;
+let currentImage = -1;
 let nextImage = -1;
+let scale = 1;
 
 // Global vars to cache event state for pinch scale
 var evCache = new Array();
@@ -18,9 +22,6 @@ function remove_event(ev) {
     }
 }
 
-// Log events flag
-var logEvents = false;
-
 // Logging/debugging functions
 function enableLog(ev) {
     logEvents = logEvents ? false : true;
@@ -28,11 +29,12 @@ function enableLog(ev) {
 
 function log(prefix, ev) {
     if (!logEvents) return;
-    var o = document.getElementsByTagName('output')[0];
+    // var o = document.getElementsByTagName('output')[0];
     var s = prefix + ": pointerID = " + ev.pointerId +
         " ; pointerType = " + ev.pointerType +
         " ; isPrimary = " + ev.isPrimary;
-    o.innerHTML += s + "";
+    // o.innerHTML += s + "";
+    console.log(s);
 }
 
 function clearLog(event) {
@@ -42,7 +44,7 @@ function clearLog(event) {
 
 const createMetaData = function createMetaData() {
     return {
-        scale: 1,
+        scale: scale,
         tx: 0,
         ty: 0,
     };
@@ -168,19 +170,29 @@ function pick(event) {
 }
 
 function down_handler(event) {
+    log("pointerDown", event);
+    event.preventDefault();
+
     isPointerDown = true;
+
     const i = pick(event);
     if (currentImage !== i) {
         currentImage = i;
         nextImage = -1;
         render();
+        if (currentImage > -1) {
+            scale = imageMetadata[currentImage].scale;
+            updateScaleLabel();
+        }
     }
-    startX = event.x - imageMetadata[currentImage].tx;
-    startY = event.y - imageMetadata[currentImage].ty;
-    // The pointerdown event signals the start of a touch interaction.
-    // This event is cached to support 2-finger gestures
-    evCache.push(event);
-    log("pointerDown", event);
+
+    if (currentImage >= 0) {
+        startX = event.x - imageMetadata[currentImage].tx;
+        startY = event.y - imageMetadata[currentImage].ty;
+        // The pointerdown event signals the start of a touch interaction.
+        // This event is cached to support 2-finger gestures
+        evCache.push(event);
+    }
 }
 
 function move_handler(ev) {
@@ -188,6 +200,7 @@ function move_handler(ev) {
     // ev.target.style.border = "dashed";
 
     if (isPointerDown) {
+        ev.preventDefault();
         // Find this event in the cache and update its record with this event
         for (var i = 0; i < evCache.length; i++) {
             if (ev.pointerId == evCache[i].pointerId) {
@@ -220,7 +233,7 @@ function move_handler(ev) {
 
             // Cache the distance for the next move event
             prevDiff = curDiff;
-        } else {
+        } else if (currentImage >= 0) {
             imageMetadata[currentImage].tx = ev.x - startX;
             imageMetadata[currentImage].ty = ev.y - startY;
         }
@@ -233,6 +246,7 @@ function move_handler(ev) {
         }
     }
 }
+
 function up_handler(ev) {
     isPointerDown = false;
     log(ev.type, ev);
@@ -259,13 +273,19 @@ function clearSelection() {
     }
     evCache = [];
 }
+
 function out_handler(event) { clearSelection(); }
 function leave_handler(event) { clearSelection(); }
 
 function gotcapture_handler(event) { }
 function lostcapture_handler(event) { }
 
-let scale = 1;
+function updateScaleLabel() {
+    const uiScale = Math.round(scale * 50);
+    document.getElementById('fader').value = uiScale;
+    document.querySelector('#volume').value = uiScale;
+}
+
 function scaleCurrentImage() {
     // Restrict scale
     scale = Math.min(Math.max(.125, scale), 4);
@@ -273,13 +293,16 @@ function scaleCurrentImage() {
     // Apply scale transform
     imageMetadata[currentImage].scale = scale;
     render();
+    updateScaleLabel();
 }
 
 function zoom(event) {
-    event.preventDefault();
+    if (currentImage >= 0) {
+        event.preventDefault();
 
-    scale += event.deltaY * -0.01;
-    scaleCurrentImage();
+        scale += event.deltaY * -0.01;
+        scaleCurrentImage();
+    }
 }
 
 function arraySwap(arr, old_index, new_index) {
@@ -299,6 +322,13 @@ function adjustZ(event, offset) {
             nextImage = -1;
             render();
         }
+    }
+}
+
+function onSlider(value) {
+    if (currentImage >= 0) {
+        scale = value / 50;
+        scaleCurrentImage();
     }
 }
 
@@ -326,12 +356,16 @@ function onResize(element, callback) {
     }, 300);
 }
 
+function preventBehavior(e) {
+    e.preventDefault();
+};
+
 function init(event) {
     console.log('DOM fully loaded and parsed');
     document.getElementById("uploadInput").addEventListener("change", updateFiles, false);
 
     var canvas = document.getElementById("myCanvas");
-    var canvasHost =  document.getElementById("canvasHost");
+    var canvasHost = document.getElementById("canvasHost");
 
     // Register pointer event handlers
     canvas.onpointerover = over_handler;
@@ -354,13 +388,14 @@ function init(event) {
     function isResized() {
         canvas.width = canvasHost.clientWidth;
         canvas.height = canvasHost.clientHeight;
-        if (_savedWidth != canvasHost.clientWidth || 
+        if (_savedWidth != canvasHost.clientWidth ||
             _savedHeight != canvasHost.clientHeight) {
             _savedWidth = canvasHost.clientWidth;
             _savedHeight = canvasHost.clientHeight;
             onResize(canvas, () => fix_dpi(canvas));
         }
     }
+    canvas.addEventListener("touchmove", preventBehavior, { passive: false });
     window.addEventListener("resize", isResized);
     isResized();
 }
